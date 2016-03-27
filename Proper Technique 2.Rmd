@@ -1,0 +1,131 @@
+---
+title: "Proper Technique Prediction"
+author: "Peter Zeglen"
+date: "March 27, 2016"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Take a look at the data
+
+We will load the data and break it into two data partitions: a testing (testing200) and a training set (training2).
+
+```{r pressure, echo=TRUE,warning=FALSE}
+library(caret)
+training <- read.csv("pml-training.csv")
+testing <- read.csv("pml-testing.csv")
+part <- createDataPartition(training$classe, p = .6,
+                                  list = FALSE,
+                                  times = 1)
+training2 <- training[part,]
+testing200 <- (training[-part,])
+```
+
+
+## Preprocessing
+
+These frames are filled with missing values. We take care of this by finding the mean of every variable and setting the missing values to those means. The "mean2"" function calculates the mean of each column in the training set. The "mean3" function" uses the means to fill in the missing values of the training dataframe. The "mean4" and "mean5" function is used to fill in the testing sets with those means.
+
+```{r gar,echo = TRUE,warning=FALSE}
+listed <- as.list(training2)
+mean2 <- function(x) {
+  if(is.numeric(x)){
+    mean(x,na.rm = TRUE)
+    }
+  else{
+    n <- as.numeric(as.character(x))
+    mean(n,na.rm = TRUE)}
+}
+
+
+mean3 <- function(x) {
+  if(is.numeric(x)){
+    m <- mean(x,na.rm = TRUE)
+    rep <-  replicate(expr = m,n = length(x))
+    x[is.na(x)] <- rep[is.na(x)]
+  }
+  else{
+    n <- as.numeric(as.character(x))
+    m <- mean(n,na.rm = TRUE)
+    rep <-  replicate(expr = m,n = length(x))
+    x = n
+    x[is.na(x)] <- rep[is.na(x)]
+  }
+  x
+  #rep <-  replicate(expr = m,n = length(x))
+  #x[is.na(x)] <- rep[is.na(x)]
+}
+
+mean4 <- function(x) {
+  replicate(expr = x,n = 20)
+  
+}
+mean5 <- function(x) {
+  replicate(expr = x,n = length(testing200$classe))
+  
+}
+
+
+avg <- lapply(listed,mean2)
+tvg <- as.data.frame(lapply(avg,mean4))
+bvg <- as.data.frame(lapply(avg,mean5))
+fvg <- as.data.frame(lapply(listed,mean3))
+
+
+fvg$classe <- training2$classe
+
+for(i in 1:(length(tvg)-1)) {
+    testing[is.na(testing[,i]),i] <- tvg[is.na(testing[,i]),i]
+}
+for(i in 1:(length(tvg)-1)) {
+    testing200[is.na(testing200[,i]),i] <- bvg[is.na(testing200[,i]),i]
+}
+```
+
+## Variable Reduction
+
+We use the cor function to figure out which of the 160 variables has a correlation of over .1 with the "classe" variable.
+
+```{r var,echo = TRUE,warning=FALSE}
+num <- lapply(fvg,is.numeric)
+num <- unlist(num)
+correlated <- cor(as.numeric(fvg$classe),fvg[,-160],use = "p")
+correlated[abs(correlated)>.1]
+which(abs(correlated)>.1)
+nam <- names(training[,num])
+nam[abs(correlated)>.1]
+
+```
+
+We use all the variables that have a correlation greater than .1 and contain values.
+
+## Model
+
+We using the method of random forests, since this is a highly effective method for classification. We use the default k-fold validation.
+
+```{r g,echo = TRUE,warning=FALSE}
+m <- train( classe~magnet_belt_y+magnet_belt_z+pitch_arm+total_accel_arm+accel_arm_x+magnet_arm_x+magnet_arm_y+magnet_arm_z+accel_dumbbell_x+magnet_dumbbell_z+pitch_forearm+total_accel_forearm+accel_forearm_x+magnet_forearm_x+magnet_forearm_y,method = "rf",data = fvg)
+```
+
+## Validate
+
+We estimate our out of sample error rate using the "testing200" set.
+
+```{r validate,warning=FALSE}
+cV <- predict(m,testing200)
+confusionMatrix(cV,testing200$classe)
+```
+
+Our accuracy is greater than 90% which indicates that this is a very effective predictor.
+
+## Prediction
+
+We use this information to predict the values for the test data.
+
+```{r valJean,warning=FALSE}
+predict(m,testing)
+```
